@@ -4,6 +4,9 @@
 conda install gooey -c conda-forge
 pip install pyinstaller
 ```
+## Run App
+`python main.py`
+
 ## Packaging
 `pyinstaller --onefile --noconsole main.py` --> `./dist/main.exe` will be generated
 ## Usage
@@ -13,7 +16,6 @@ pip install pyinstaller
 │   ├── custom.csv
 │   ├── en.csv
 │   ├── filter.txt
-│   ├── main.php
 │   └── vi.csv
 ├── main.exe
 ```
