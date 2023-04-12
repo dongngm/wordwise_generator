@@ -15,7 +15,7 @@ from multiprocessing import freeze_support
 @Gooey(
     advanced=True,
     program_name="Word-wise Ebook Generator",
-    default_size=(600, 900))
+    default_size=(800, 800))
 def main():
     desc = "Application to generate word-wise ebooks"
     parser = GooeyParser(description=desc)

@@ -1,6 +1,7 @@
 from html.parser import HTMLParser
 from io import StringIO
-import pandas as pd
+# import pandas as pd # not using pandas to minimize app size
+import csv
 import logging
 import os
 import subprocess
@@ -9,12 +10,14 @@ from multiprocessing import Pool, Manager
 import re
 import shutil
 import time
+import ast
 
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [+] %(message)s')
 logger = logging.getLogger()
-WORD_COL = "word"
-WW_COL = "short_def"
+WW_SRC_COL = "word"
+WW_DES_COL = "short_def"
+WW_HINT_LVL_COL = "hint_level"
 DATA_DIR = "./data"
 STOPWORD_FPATH = os.path.join(DATA_DIR, "filter.txt")
 
@@ -48,6 +51,25 @@ def load_lines_fl_to_lst(fpath):
 def load_words_fl_to_lst(fpath):
     with open(fpath, 'r', encoding="utf-8") as f:
         return f.read().split()
+
+def read_ww_csv_to_dict(fpath, hint_level):
+    src_ww = []
+    des_ww = []
+    with open(fpath, newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            try:
+                hint_lvl_ww = ast.literal_eval(row[WW_HINT_LVL_COL])
+            except:
+                logger.error(f"Invalid hint level at word: {row[WW_SRC_COL]} in: {fpath}")
+                # not gonna process this word
+                hint_lvl_ww = 99
+            #
+            if hint_lvl_ww <= hint_level:
+                src_ww.append(row[WW_SRC_COL])
+                des_ww.append(row[WW_DES_COL])
+    #
+    return dict(zip(src_ww, des_ww))
 
 
 def cleanword(word):
@@ -104,12 +126,8 @@ def generate(args):
     # Load Stop Words
     stopwords = load_lines_fl_to_lst(STOPWORD_FPATH)
     # Load WW Dict from CSV
-    df01_ww = pd.read_csv(os.path.join(DATA_DIR, f"{langww}.csv"))
-    # Filter based on hint_level
-    df02_ww = df01_ww[df01_ww.hint_level <= hint_level]
-    assert df02_ww.shape[0] > 0 
     # Get wordwise dict: {word -> ww explanation/translation}
-    ww_dict = dict(zip(df02_ww[WORD_COL],df02_ww[WW_COL]))
+    ww_dict = read_ww_csv_to_dict(os.path.join(DATA_DIR, f"{langww}.csv"), hint_level)
     # Clean temp files
     for p in ["book_dump.htmlz", "book_dump_html", "book_dump_html.zip"]:
         if os.path.isfile(p):
