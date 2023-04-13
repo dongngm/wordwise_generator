@@ -19,9 +19,10 @@ conda install -c conda-forge gooey=1.0.8.1
 │   ├── custom.csv
 │   ├── en.csv
 │   ├── filter.txt
-│   ├── main.php
 │   └── vi.csv
 ├── main.exe
 ```
 ## Credit
+`https://github.com/xnohat/wordwisecreator`
+
 `https://www.facebook.com/doduc.dnad`

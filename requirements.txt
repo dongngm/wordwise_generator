@@ -1,3 +1,0 @@
-Gooey==1.0.8.1
-pandas==1.5.3
-pyinstalle==5.9.0
