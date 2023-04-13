@@ -1,5 +1,5 @@
 # wordwise_generator
-## Prequisites
+## Prerequisites
 ```
 # Install Calibre: https://calibre-ebook.com/download
 # python=3.8.16
@@ -8,6 +8,7 @@ conda install -c conda-forge gooey=1.0.8.1
 ```
 ## Run App
 `python main.py`
+
 ## Packaging
 `pip install pyinstaller==5.10.0`
 
@@ -22,6 +23,7 @@ conda install -c conda-forge gooey=1.0.8.1
 │   └── vi.csv
 ├── main.exe
 ```
+- Works on `Windows 11 build 22621.1413` `Windows 10 build 19045.2728`
 ## Credit
 `https://github.com/xnohat/wordwisecreator`
 
