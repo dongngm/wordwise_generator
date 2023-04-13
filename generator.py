@@ -7,7 +7,7 @@ import os
 import subprocess
 import multiprocessing as mp
 from multiprocessing import Pool, Manager
-import re
+import re, sys
 import shutil
 import time
 import ast
@@ -72,7 +72,7 @@ def read_ww_csv_to_dict(fpath, hint_level):
     return dict(zip(src_ww, des_ww))
 
 
-def cleanword(word):
+def clean_word(word):
     word = strip_tags(word)
     word = re.sub('[^A-Za-z0-9]+', '', word)
     return word.lower()
@@ -90,7 +90,7 @@ def init_worker(words, ww_dict, stopwords):
 def ww_lookup(word_idx):
     #
     word = shared_words[word_idx]
-    cleaned_word = cleanword(word)
+    cleaned_word = clean_word(word)
     if cleaned_word not in shared_stopwords:
         if cleaned_word in shared_ww_dict:
             wordwise = shared_ww_dict[cleaned_word]
@@ -101,20 +101,23 @@ def ww_lookup(word_idx):
                 f"<ruby>{cleaned_word}<rt>{wordwise}</rt></ruby>",
                 word
             )
-            return (word_idx, word_ww)
+            return (word_idx, word_ww, 1)
     #
     # no change
-    return (word_idx, word)
+    return (word_idx, word, 0)
 
 
 def generate(args):
+    s = time.time()
     # validate args
     if not (args.out_epub or args.out_azw3 or args.out_pdf):
         logger.error("Must select at least one output format.")
-        exit(1)
+        sys.exit(1)
     #
+    capture_cmdout = True
     if args.debug:
         logger.setLevel(logging.DEBUG)
+        capture_cmdout = False
     #
     i_file, hint_level, langww, num_t = (
         args.input_file, args.hint_level, args.lang, args.num_threads
@@ -136,11 +139,19 @@ def generate(args):
             shutil.rmtree(p, ignore_errors=True)
     # Convert Book to HTML
     logger.info("Converting book to HTML format")
-    subprocess.run(["ebook-convert", i_file, "book_dump.htmlz"], capture_output=True)
-    subprocess.run(["ebook-convert", "book_dump.htmlz", "book_dump_html"], capture_output=True)
-    # Check if conversion is successful
-    if not os.path.isfile("book_dump_html/index1.html"):
-        logger.error("Please check if calibre is installed.")
+    try:
+        subprocess.run(
+            ["ebook-convert", i_file, "book_dump.htmlz"],
+            capture_output=capture_cmdout,
+            check=True)
+        subprocess.run(
+            ["ebook-convert","book_dump.htmlz", "book_dump_html"],
+            capture_output=capture_cmdout,
+            check=True)
+    except:
+        # Check if conversion is successful
+        logger.error("Conversion failed. Please check if calibre is installed.")
+        sys.exit(1)
     # Get content
     words = load_words_fl_to_lst("book_dump_html/index1.html")
     logger.info("Loading book content: {} words".format(len(words)))
@@ -150,15 +161,19 @@ def generate(args):
         # mp_ww_dict = manager.dict(ww_dict)
         # mp_stopwords = manager.list(stopwords)
     logger.info("Begin to look-up wordwise. Number of parallel threads: {}".format(min(mp.cpu_count(), num_t)))
-    with Pool(min(mp.cpu_count(), num_t), initializer=init_worker, initargs=(words, ww_dict, stopwords)) as pool:
+    with Pool(
+        min(mp.cpu_count(), num_t),
+        initializer=init_worker,
+        initargs=(words, ww_dict, stopwords)) as pool:
         # ww_idxwords = pool.starmap(ww_lookup, [(mp_words, mp_ww_dict, ww_dict, mp_stopwords) for word_idx in range(len(words))])
         ww_idxwords = pool.starmap(ww_lookup, [(word_idx,) for word_idx in range(len(words))])
     #
     logger.info("Finish looking up wordwise. Consolidating data from threads")
     ww_idxwords_sorted = sorted(ww_idxwords, key=lambda x: x[0])
     ww_idxwords = list(map(lambda x: x[1], ww_idxwords_sorted))
+    ww_num = sum(list(map(lambda x: x[2], ww_idxwords_sorted)))
     #
-    logger.info("Creating book with wordwise...")
+    logger.info(f"Looked up {ww_num} wordwises in total. Creating book with wordwise...")
     ww_book_content = " ".join(ww_idxwords)
     with open("book_dump_html/index1.html", "w", encoding="utf-8") as f:
         f.write(ww_book_content)
@@ -182,5 +197,5 @@ def generate(args):
         if os.path.isdir(p):
             shutil.rmtree(p, ignore_errors=True)
     #
-    logger.info("Finished. Have fun reading books.")
+    logger.info("Finished in {} (s). Have fun reading books.".format(time.time() - s))
     logger.info("Credit: https://www.facebook.com/doduc.dnad")
