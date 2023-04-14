@@ -93,30 +93,37 @@ def init_worker(words, ww_dict, stopwords):
 
 def ww_lookup(word_idx):
     #
+    log = []
     word = shared_words[word_idx]
     cleaned_word = clean_word(word)
     if cleaned_word not in shared_stopwords:
         if cleaned_word in shared_ww_dict:
             wordwise = shared_ww_dict[cleaned_word]
-            logger.debug(f"[#] {cleaned_word} --> {wordwise}");
+            # logger not working well in multiprocessing, especially when packaged
+            # logger.debug(f"[#] {cleaned_word} --> {wordwise}");
+            # walkaround
+            log.append(f"{cleaned_word} --> {wordwise}")
             # Replace Original Word with Wordwised
             word_ww = re.sub(
                 cleaned_word,
                 f"<ruby>{cleaned_word}<rt>{wordwise}</rt></ruby>",
                 word
             )
-            return (word_idx, word_ww, 1)
+            return (word_idx, word_ww, 1, log)
     #
     # no change
-    return (word_idx, word, 0)
+    return (word_idx, word, 0, log)
 
-def run_subproc(cmd, capture_cmdout=True):
-    subprocess.run(
-        cmd.split(),
-        capture_output=capture_cmdout,
+def run_subproc(cmdlst):
+    res = subprocess.run(
+        cmdlst,
+        capture_output=True,
         creationflags=subprocess.CREATE_NO_WINDOW,
         check=True)
-    
+    #
+    for l in res.stdout.decode().splitlines():
+        logger.debug(l)
+
 def generate(args):
     s = time.time()
     # validate args
@@ -124,10 +131,8 @@ def generate(args):
         logger.error("Must select at least one output format.")
         sys.exit(1)
     #
-    capture_cmdout = True
     if args.debug:
         logger.setLevel(logging.DEBUG)
-        capture_cmdout = False
     #
     i_file, hint_level, langww, num_t = (
         args.input_file, args.hint_level, args.lang, args.num_threads
@@ -150,8 +155,8 @@ def generate(args):
     # Convert Book to HTML
     logger.info("Converting book to HTML format")
     try:
-        run_subproc(f"ebook-convert {i_file} book_dump.htmlz", capture_cmdout)
-        run_subproc(f"ebook-convert book_dump.htmlz book_dump_html", capture_cmdout)
+        run_subproc(["ebook-convert", i_file, "book_dump.htmlz"])
+        run_subproc(["ebook-convert", "book_dump.htmlz", "book_dump_html"])
     except:
         # Check if conversion is successful
         logger.error("Conversion failed. Please check if calibre is installed.")
@@ -168,7 +173,7 @@ def generate(args):
     with Pool(
         min(mp.cpu_count(), num_t),
         initializer=init_worker,
-        initargs=(words, ww_dict, stopwords)) as pool:
+            initargs=(words, ww_dict, stopwords)) as pool:
         # ww_idxwords = pool.starmap(ww_lookup, [(mp_words, mp_ww_dict, ww_dict, mp_stopwords) for word_idx in range(len(words))])
         ww_idxwords = pool.starmap(ww_lookup, [(word_idx,) for word_idx in range(len(words))])
     #
@@ -176,6 +181,14 @@ def generate(args):
     ww_idxwords_sorted = sorted(ww_idxwords, key=lambda x: x[0])
     ww_idxwords = list(map(lambda x: x[1], ww_idxwords_sorted))
     ww_num = sum(list(map(lambda x: x[2], ww_idxwords_sorted)))
+    #
+    if args.debug:
+        ww_logs = list(map(lambda x: x[3], ww_idxwords_sorted))
+        ww_logs = [sublg for proclog in ww_logs for sublg in proclog] # flatten
+        # write to log file instead, print out unicode would be very troublesome
+        with open("./conversion_log.txt", "w", encoding="utf-8") as f:
+            for lg in ww_logs:
+                f.write(f"{lg}\n")
     #
     logger.info(f"Looked up {ww_num} wordwises in total. Creating book with wordwise...")
     ww_book_content = " ".join(ww_idxwords)
@@ -188,20 +201,17 @@ def generate(args):
     if args.out_epub:
         logger.info("Creating word-wise EPUB...")
         run_subproc(
-            f"ebook-convert book_dump_html.zip {bookfilename}-wordwised-lvl{hint_level}.epub",
-            capture_cmdout
+            ["ebook-convert", "book_dump_html.zip", f"{bookfilename}-wordwised-lvl{hint_level}.epub"],
         )
     if args.out_azw3:
         logger.info("Creating word-wise AZW3...")
         run_subproc(
-            f"ebook-convert book_dump_html.zip {bookfilename}-wordwised-lvl{hint_level}.azw3",
-            capture_cmdout
+            ["ebook-convert", "book_dump_html.zip", f"{bookfilename}-wordwised-lvl{hint_level}.azw3"],
         )
     if args.out_pdf:
         logger.info("Creating word-wise PDF...")
         run_subproc(
-            f"ebook-convert book_dump_html.zip {bookfilename}-wordwised-lvl{hint_level}.pdf",
-            capture_cmdout
+            ["ebook-convert", "book_dump_html.zip", f"{bookfilename}-wordwised-lvl{hint_level}.pdf"],
         )
     
     # clean temp
